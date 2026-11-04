@@ -10,12 +10,12 @@ from flask import (Flask, request, redirect, render_template, session,
 from jinja2 import DictLoader
 from pymongo import MongoClient, ReturnDocument
 
-SHOP = os.getenv("SHOP_NAME", "Maneesha Enterprises")
-ADDRESS = os.getenv("SHOP_ADDRESS", "No:25, Katumana, Nuwaraeliya.")
-PHONE = os.getenv("SHOP_PHONE", "")
-PASSWORD = os.getenv("APP_PASSWORD", "")
-TAGLINE = os.getenv("SHOP_TAGLINE", "Hardware & Building Materials")
-FOOTER_NOTE = os.getenv("SHOP_FOOTER_NOTE", "")
+SHOP = "Maneesha Enterprises"
+ADDRESS = "No:25, Katumana, Nuwaraeliya."
+PHONE = "072 992 1118"
+PASSWORD = "12345678"
+TAGLINE = "Hardware & Building Materials"
+FOOTER_NOTE = "Thank You Come Again !"
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "change-this-secret")
