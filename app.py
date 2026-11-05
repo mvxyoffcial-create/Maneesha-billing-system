@@ -148,7 +148,7 @@ def bill_save():
     lines = d.get("lines", [])
     if not lines:
         return jsonify(error="Add items first"), 400
-    done, out, total = [], [], 0.0
+    done, out, subtotal = [], [], 0.0
 
     def rollback():
         for o, q in done:
@@ -180,9 +180,16 @@ def bill_save():
         done.append((o, q))
         out.append(dict(item_id=str(o), name=it["name"], price=p, amount=amt,
                         cost=it.get("buy", 0), qty=q))
-        total += amt
+        subtotal += amt
+    try:
+        discount = float(d.get("discount") or 0)
+    except (TypeError, ValueError):
+        discount = 0.0
+    discount = round(min(max(discount, 0.0), subtotal), 2)
+    total = round(subtotal - discount, 2)
     bill = dict(_id=next_bill_no(), created=now(),
                 customer=(d.get("customer") or "").strip(),
+                subtotal=round(subtotal, 2), discount=discount,
                 total=total, paid=float(d.get("paid") or 0), lines=out)
     db.bills.insert_one(bill)
     alerts = []  # automatic stock alert for items that are now low / finished
@@ -200,7 +207,9 @@ def bill_print(bid):
     if not raw:
         abort(404)
     b = Doc(raw)
-    sub = sum(l.get("amount", l["price"] * l["qty"]) for l in raw["lines"])
+    sub = raw.get("subtotal")
+    if sub is None:
+        sub = sum(l.get("amount", l["price"] * l["qty"]) for l in raw["lines"])
     return render_template("print.html", b=b, sub=sub)
 
 
@@ -285,12 +294,13 @@ def report():
     rows = [Doc(b) for b in db.bills.find(
         {"created": {"$gte": start, "$lt": start + timedelta(days=1)}}).sort("_id", 1)]
     sales = sum(b["total"] for b in rows)
+    discounts = sum(b.get("discount", 0) or 0 for b in rows)
     profit = sum(l.get("amount", l["price"] * l["qty"]) - l["cost"] * l["qty"]
-                 for b in rows for l in b["lines"])
+                 for b in rows for l in b["lines"]) - discounts
     low = [Doc(i) for i in db.items.find(
         {"$expr": {"$lte": ["$qty", "$low"]}}).sort("qty", 1)]
     return render_template("report.html", day=day, rows=rows, sales=sales,
-                           profit=profit, low=low)
+                           profit=profit, discounts=discounts, low=low)
 
 
 BASE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -328,7 +338,7 @@ Set "Low alert at" so you are warned when stock is running out. Use <b>Edit</b> 
 <p>Go to <b>New bill</b>. Type part of an item name, tap the item to add it, and change the quantity or price if needed.
 Enter the customer name (optional) and the cash received, then tap <b>Save and print</b>.
 The stock goes down automatically. The bill shows the total, cash and change.<br>
-<b>Special price:</b> you can type a different price or amount for any item, or type a final total, to give a lower price. The bill simply shows the lower prices.</p></div>
+<b>Discount:</b> type a discount in Rs, or a percentage (%), under the item list. You can also type the final total you want to charge and the discount is worked out for you. The bill shows the subtotal, the discount and the new total.</p></div>
 <div class="card"><b>3. Print</b>
 <p>The print window opens by itself. Choose your thermal printer and set margins to "None". Bills are 58mm wide;
 for an 80mm printer add <b>?w=80</b> at the end of the bill address. To print again later, open <b>Bills</b> and tap <b>Reprint</b>.</p></div>
@@ -337,7 +347,7 @@ for an 80mm printer add <b>?w=80</b> at the end of the bill address. To print ag
 <div class="card"><b>Automatic stock alert</b>
 <p>When an item reaches its "Low alert" number, a red bar appears at the top of every page, and after saving a bill the system pops up a warning with the item name. Tap the bar to see all low items.</p></div>
 <div class="card"><b>5. Reports</b>
-<p><b>Report</b> shows the sales, profit and bills for any day, and the list of items that are low in stock.</p></div>
+<p><b>Report</b> shows the sales, discounts, profit and bills for any day, and the list of items that are low in stock.</p></div>
 {% endblock %}"""
 
 LOGIN = """{% extends "base.html" %}{% block body %}
@@ -352,11 +362,16 @@ BILL_FORM = """{% extends "base.html" %}{% block body %}
 <tbody id="cart"><tr><td colspan="5">Search and tap an item to add it.</td></tr></tbody></table></div>
 <div class="card"><div class="row"><input id="cust" placeholder="Customer name (optional)">
 <input id="paid" type="number" min="0" step="any" placeholder="Cash received (Rs)"></div>
-<p><label>Total (Rs) - you can type a final lower price here<input id="ftot" type="number" min="0" step="any" class="big"></label></p>
+<div class="row"><label>Subtotal (Rs)<input id="sub" readonly></label>
+<label>Discount (Rs)<input id="disc" type="number" min="0" step="any" placeholder="0"></label>
+<label>Discount (%)<input id="dpct" type="number" min="0" max="100" step="any" placeholder="0"></label></div>
+<p><label>Total to pay (Rs) - or type the final price you want and the discount is set for you<input id="ftot" type="number" min="0" step="any" class="big"></label></p>
 <p class="err" id="err"></p><button id="save">Save and print</button></div>
 <script>
 const items={{ items|tojson }};let cart=[];
 const q=document.getElementById('q'),res=document.getElementById('res'),body=document.getElementById('cart');
+const subE=document.getElementById('sub'),discE=document.getElementById('disc'),dpctE=document.getElementById('dpct'),ftE=document.getElementById('ftot');
+let pctMode=false;
 const f=n=>n.toLocaleString('en-LK',{minimumFractionDigits:2,maximumFractionDigits:2});
 let hits=[],sel=0;
 const norm=s=>(s||'').toLowerCase();
@@ -393,15 +408,21 @@ function draw(){body.innerHTML='';
   pi.oninput=()=>{l.price=+pi.value;l.amount=r2(l.qty*l.price);ai.value=l.amount;calc()};
   ai.oninput=()=>{l.amount=+ai.value;if(l.qty>0){l.price=r2(l.amount/l.qty);pi.value=l.price}calc()};
   tr.querySelector('button').onclick=()=>{cart.splice(k,1);draw()};body.appendChild(tr)});calc()}
-function calc(){let s=0;
- cart.forEach((l,k)=>{s+=l.amount;const r=body.rows[k],qi=r&&r.querySelector('input');if(qi)qi.style.borderColor=l.qty>l.max?'#b91c1c':''});
- const ft=document.getElementById('ftot');if(document.activeElement!==ft)ft.value=cart.length?r2(s):''}
-document.getElementById('ftot').onchange=e=>{const T=+e.target.value,S=cart.reduce((x,l)=>x+l.amount,0);
- if(!cart.length||!(T>=0)||S<=0)return;let acc=0;
- cart.forEach((l,k)=>{l.amount=k==cart.length-1?Math.max(r2(T-acc),0):r2(l.amount*T/S);acc+=l.amount;if(l.qty>0)l.price=r2(l.amount/l.qty)});draw()};
+function subtotal(){return cart.reduce((x,l)=>x+l.amount,0)}
+function calc(){const s=subtotal();
+ cart.forEach((l,k)=>{const r=body.rows[k],qi=r&&r.querySelector('input');if(qi)qi.style.borderColor=l.qty>l.max?'#b91c1c':''});
+ if(pctMode&&dpctE.value!=='')discE.value=r2(s*Math.min(Math.max(+dpctE.value||0,0),100)/100);
+ let d=Math.max(+discE.value||0,0);if(d>s){d=s;discE.value=r2(d)}
+ subE.value=cart.length?r2(s):'';
+ if(document.activeElement!==ftE)ftE.value=cart.length?r2(s-d):''}
+discE.oninput=()=>{pctMode=false;dpctE.value='';calc();ftE.value=cart.length?r2(subtotal()-(+discE.value||0)):''};
+dpctE.oninput=()=>{pctMode=true;calc();ftE.value=cart.length?r2(subtotal()-(+discE.value||0)):''};
+ftE.onchange=e=>{const T=+e.target.value,S=subtotal();
+ if(!cart.length||!(T>=0)||S<=0)return;
+ pctMode=false;dpctE.value='';discE.value=T>=S?'':r2(S-T);ftE.blur();calc()};
 document.getElementById('save').onclick=async()=>{const e=document.getElementById('err');e.textContent='';
  const r=await fetch('/bill/new',{method:'POST',headers:{'Content-Type':'application/json'},
-  body:JSON.stringify({lines:cart,customer:document.getElementById('cust').value,paid:document.getElementById('paid').value})});
+  body:JSON.stringify({lines:cart,customer:document.getElementById('cust').value,paid:document.getElementById('paid').value,discount:discE.value})});
  const j=await r.json();if(!r.ok){e.textContent=j.error;return}
  if(j.alerts&&j.alerts.length)alert('Stock alert - low or finished: '+j.alerts.join(', '));location=j.url};
 </script>{% endblock %}"""
@@ -442,15 +463,17 @@ ITEM_EDIT = """{% extends "base.html" %}{% block body %}
 <button>Save changes</button> <a class="btn alt" href="/items">Cancel</a></form>{% endblock %}"""
 
 BILLS = """{% extends "base.html" %}{% block body %}<h2>Recent bills</h2>
-<div class="card wrap"><table><tr><th>No.</th><th>Date</th><th>Customer</th><th class="r">Total</th><th></th></tr>
+<div class="card wrap"><table><tr><th>No.</th><th>Date</th><th>Customer</th><th class="r">Discount</th><th class="r">Total</th><th></th></tr>
 {% for b in rows %}<tr><td>{{ b.id }}</td><td>{{ b.created.strftime('%Y-%m-%d %H:%M') }}</td><td>{{ b.customer }}</td>
+<td class="r">{{ b.discount|money if b.discount else '-' }}</td>
 <td class="r">{{ b.total|money }}</td><td style="white-space:nowrap"><a class="btn" href="/bill/{{ b.id }}">Reprint</a>
 <form method="post" action="/bill/{{ b.id }}/delete" style="display:inline" onsubmit="return confirm('Void bill {{ b.id }}? Stock will be put back.')"><button class="alt">Void</button></form></td></tr>
-{% else %}<tr><td colspan="5">No bills yet.</td></tr>{% endfor %}</table></div>{% endblock %}"""
+{% else %}<tr><td colspan="6">No bills yet.</td></tr>{% endfor %}</table></div>{% endblock %}"""
 
 REPORT = """{% extends "base.html" %}{% block body %}<h2>Daily report</h2>
 <form class="card row"><input type="date" name="d" value="{{ day }}"><button>Show</button></form>
 <div class="card"><p>Bills: <b>{{ rows|length }}</b></p><p>Sales: <span class="big">Rs {{ sales|money }}</span></p>
+<p>Discounts given: <b>Rs {{ discounts|money }}</b></p>
 <p>Profit: <b>Rs {{ profit|money }}</b></p></div>
 <div class="card wrap"><table><tr><th>No.</th><th>Time</th><th>Customer</th><th class="r">Total</th></tr>
 {% for b in rows %}<tr><td><a href="/bill/{{ b.id }}">{{ b.id }}</a></td><td>{{ b.created.strftime('%H:%M') }}</td><td>{{ b.customer }}</td><td class="r">{{ b.total|money }}</td></tr>
@@ -461,12 +484,14 @@ REPORT = """{% extends "base.html" %}{% block body %}<h2>Daily report</h2>
 
 PRINT = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 {% set w80 = request.args.get('w') == '80' %}
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,800;1,700&display=swap" rel="stylesheet">
 <title>Bill {{ b.id }}</title><style>
 @page{size:{{ 80 if w80 else 58 }}mm auto;margin:0}
 *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-body{font:11px/1.45 'Courier New',monospace;color:#000;width:{{ 72 if w80 else 48 }}mm;margin:0 auto;padding:3mm 0}
-.brand{background:#000;color:#fff;text-align:center;padding:7px 4px;border-radius:4px;font:700 {{ 20 if w80 else 17 }}px/1.15 Arial,Helvetica,sans-serif;letter-spacing:.5px}
-.tag{text-align:center;font:700 10px Arial,Helvetica,sans-serif;letter-spacing:.8px;margin:5px 0 2px}
+body{font:11px/1.45 'Courier New',monospace;color:#000;background:#fff;width:{{ 72 if w80 else 48 }}mm;margin:0 auto;padding:3mm 0}
+.brand{text-align:center;color:#000;background:none;padding:5px 2px 4px;border-top:2px solid #000;border-bottom:2px solid #000;font:800 {{ 28 if w80 else 23 }}px/1.1 'Playfair Display',Georgia,'Times New Roman',serif;letter-spacing:.4px}
+.tag{text-align:center;font:italic 700 12px 'Playfair Display',Georgia,serif;letter-spacing:.3px;margin:5px 0 2px}
 .addr{text-align:center;font-size:10px;line-height:1.35}
 hr{border:0;border-top:1px dashed #000;margin:6px 0}hr.s{border-top:1px solid #000}hr.d{border-top:3px double #000}
 .l{display:flex;justify-content:space-between;gap:6px}
@@ -490,13 +515,15 @@ hr{border:0;border-top:1px dashed #000;margin:6px 0}hr.s{border-top:1px solid #0
 <div class="l it"><span>{{ l.qty|num }} x {{ l.price|money }}</span><span>{{ l.amount|money }}</span></div>{% endfor %}<hr>
 <div class="l sm"><span>Items: {{ b.lines|length }}</span><span>Total qty: {{ b.lines|sum(attribute='qty')|num }}</span></div>
 <hr class="s">
+{% if b.discount %}<div class="l"><span>Subtotal</span><span>{{ sub|money }}</span></div>
+<div class="l b"><span>Discount</span><span>- {{ b.discount|money }}</span></div>{% endif %}
 <div class="box l"><span>TOTAL</span><span>Rs {{ b.total|money }}</span></div><hr class="s">
 {% if b.paid %}<div class="l"><span>Cash</span><span>{{ b.paid|money }}</span></div>
 <div class="l b"><span>Change</span><span>{{ (b.paid - b.total)|money }}</span></div>{% endif %}
 <hr class="d">
 <div class="ty">Thank you for your purchase!</div><div class="c sm">Please visit us again</div>
 {% if footer_note %}<div class="c sm" style="margin-top:3px">{{ footer_note }}</div>{% endif %}
-<script>if(location.search.indexOf('p=0')<0&&document.referrer.indexOf('/bill/new')>-1)window.print()</script>
+<script>if(location.search.indexOf('p=0')<0&&document.referrer.indexOf('/bill/new')>-1){(document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve()).then(()=>setTimeout(()=>window.print(),150))}</script>
 </body></html>"""
 
 app.jinja_loader = DictLoader({
