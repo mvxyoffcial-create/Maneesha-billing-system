@@ -136,7 +136,8 @@ def home():
 def bill_form():
     items = [dict(id=str(i["_id"]), code=i.get("code", ""), name=i["name"],
                   unit=i.get("unit", ""), category=i.get("category", ""),
-                  sell=i.get("sell", 0), qty=i.get("qty", 0), low=i.get("low", 0))
+                  sell=i.get("sell", 0), qty=i.get("qty", 0), low=i.get("low", 0),
+                  image=i.get("image", ""))
              for i in db.items.find().sort("name", 1)]
     return render_template("bill_form.html", items=items)
 
@@ -223,6 +224,7 @@ def bills():
 def _fields(f):
     return dict(code=f.get("code", "").strip(), name=f["name"].strip(),
                 category=f.get("category", "").strip(),
+                image=f.get("image", "").strip(),
                 unit=f.get("unit", "").strip() or "pcs",
                 buy=float(f.get("buy") or 0), sell=float(f.get("sell") or 0),
                 low=float(f.get("low") or 0))
@@ -318,6 +320,7 @@ label{display:block;font-size:13px;color:#6b7280}th,td{padding:7px;border-bottom
 button,.btn{font:inherit;background:var(--accent);color:#fff;border:0;border-radius:6px;padding:9px 14px;cursor:pointer;text-decoration:none;display:inline-block}
 button.alt{background:#6b7280}.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .row>*{flex:1;min-width:110px}.card{background:var(--card);padding:12px;border-radius:8px;margin-bottom:12px}
+.th{width:40px;height:40px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:8px;border:1px solid var(--line);background:#fff}
 .low{background:#fde8d8}.hit{padding:9px;border-bottom:1px solid var(--line);cursor:pointer;background:#fff}
 .hit:hover{background:#fde8d8}.r{text-align:right}.err{color:#b91c1c}.big{font-size:22px;font-weight:700}.alert{display:block;background:#b91c1c;color:#fff;text-align:center;padding:9px;text-decoration:none;font-weight:600}.hit.sel{background:#fde8d8}.hit.out{opacity:.5}.chips{display:flex;gap:6px;margin-bottom:10px}footer{text-align:center;color:#6b7280;font-size:13px;padding:16px 14px 24px}
 </style></head><body>
@@ -384,7 +387,9 @@ function show(){res.innerHTML='';hits.forEach((i,k)=>{const d=document.createEle
  d.className='hit'+(k==sel?' sel':'')+(i.qty<=0?' out':'');
  const a=document.createElement('b');a.textContent=i.name;
  const b=document.createElement('span');b.textContent='  Rs '+f(i.sell)+' | '+i.qty+' '+i.unit+(i.qty<=0?' - OUT OF STOCK':i.qty<=i.low?' - LOW':'');
- if(i.qty<=i.low)b.className='err';d.append(a,b);d.onclick=()=>pick(i);res.appendChild(d)});
+ if(i.qty<=i.low)b.className='err';
+ if(i.image){const m=document.createElement('img');m.src=i.image;m.className='th';m.onerror=()=>m.remove();d.append(m)}
+ d.append(a,b);d.onclick=()=>pick(i);res.appendChild(d)});
  if(!hits.length&&q.value.trim())res.innerHTML='<div class="hit">No item found</div>'}
 q.oninput=()=>{hits=find(q.value);sel=0;show()};
 q.onkeydown=e=>{if(!hits.length)return;
@@ -397,12 +402,13 @@ function pick(i){const e=document.getElementById('err');e.textContent='';
  add(i);q.value='';res.innerHTML='';hits=[];q.focus()}
 const r2=n=>Math.round((n+Number.EPSILON)*100)/100;
 function add(i){const l=cart.find(c=>c.id==i.id);
- if(l){l.qty++;l.amount=r2(l.qty*l.price)}else cart.push({id:i.id,name:i.name,price:i.sell,qty:1,amount:i.sell,max:i.qty});draw()}
+ if(l){l.qty++;l.amount=r2(l.qty*l.price)}else cart.push({id:i.id,name:i.name,price:i.sell,qty:1,amount:i.sell,max:i.qty,img:i.image});draw()}
 function draw(){body.innerHTML='';
  if(!cart.length){body.innerHTML='<tr><td colspan="5">Search and tap an item to add it.</td></tr>';calc();return}
  cart.forEach((l,k)=>{const tr=document.createElement('tr');
   tr.innerHTML='<td></td><td><input type="number" min="0" step="any"></td><td><input type="number" min="0" step="any"></td><td><input type="number" min="0" step="any"></td><td><button class="alt">&#10005;</button></td>';
   tr.cells[0].textContent=l.name;
+  if(l.img){const m=document.createElement('img');m.src=l.img;m.className='th';m.onerror=()=>m.remove();tr.cells[0].prepend(m)}
   const [qi,pi,ai]=tr.querySelectorAll('input');qi.value=l.qty;pi.value=l.price;ai.value=l.amount;
   qi.oninput=()=>{l.qty=+qi.value;l.amount=r2(l.qty*l.price);ai.value=l.amount;calc()};
   pi.oninput=()=>{l.price=+pi.value;l.amount=r2(l.qty*l.price);ai.value=l.amount;calc()};
@@ -436,12 +442,13 @@ ITEMS = """{% extends "base.html" %}{% block body %}
 <div class="row"><input name="buy" type="number" step="any" placeholder="Buying price">
 <input name="sell" type="number" step="any" placeholder="Selling price">
 <input name="qty" type="number" step="any" placeholder="Opening stock"><input name="low" type="number" step="any" placeholder="Low alert at"></div>
+<div class="row"><input name="image" type="url" placeholder="Image URL (optional) - paste a picture link to identify the item"></div>
 <button>Add item</button></form>
 <div class="chips"><a class="btn {{ '' if f == 'low' else 'alt' }}" href="/items?f=low">Low stock only ({{ nlow }})</a><a class="btn {{ 'alt' if f == 'low' else '' }}" href="/items">All items</a></div>
 <div class="card"><input id="s" placeholder="Search by name, code or category…"></div>
 <div class="card wrap"><table id="t"><thead><tr><th>Code</th><th>Name</th><th>Category</th><th class="r">Buy</th><th class="r">Sell</th><th class="r">Stock</th><th></th></tr></thead>
 {% for i in rows %}<tr class="{{ 'low' if i.qty <= i.low }}" data-s="{{ (i.code ~ ' ' ~ i.name ~ ' ' ~ i.category)|lower }}">
-<td>{{ i.code }}</td><td>{{ i.name }}</td><td>{{ i.category }}</td><td class="r">{{ i.buy|money }}</td><td class="r">{{ i.sell|money }}</td>
+<td>{{ i.code }}</td><td>{% if i.image %}<img class="th" src="{{ i.image }}" loading="lazy" alt="" onerror="this.style.display='none'">{% endif %}{{ i.name }}</td><td>{{ i.category }}</td><td class="r">{{ i.buy|money }}</td><td class="r">{{ i.sell|money }}</td>
 <td class="r">{{ i.qty|num }} {{ i.unit }}{% if i.qty <= 0 %} <b class="err">OUT</b>{% elif i.qty <= i.low %} <b class="err">LOW</b>{% endif %}</td>
 <td style="white-space:nowrap"><a class="btn" href="/items/{{ i.id }}/edit">Edit</a>
 <form method="post" action="/items/{{ i.id }}/delete" style="display:inline" onsubmit="return confirm('Delete {{ i.name|e }}?')"><button class="alt">Delete</button></form></td></tr>
@@ -458,6 +465,8 @@ ITEM_EDIT = """{% extends "base.html" %}{% block body %}
 <div class="row"><label>Buying price<input name="buy" type="number" step="any" value="{{ i.buy|num }}"></label>
 <label>Selling price<input name="sell" type="number" step="any" value="{{ i.sell|num }}"></label>
 <label>Low alert at<input name="low" type="number" step="any" value="{{ i.low|num }}"></label></div>
+<div class="row"><label>Image URL (picture link to identify the item)<input name="image" type="url" value="{{ i.image or '' }}" placeholder="https://..."></label></div>
+{% if i.image %}<p><img src="{{ i.image }}" alt="" style="max-height:140px;max-width:100%;border-radius:8px;border:1px solid var(--line)" onerror="this.style.display='none'"></p>{% endif %}
 <div class="row"><label>Stock now<input name="qty" type="number" step="any" value="{{ i.qty|num }}"></label>
 <label>Add stock (+)<input name="add" type="number" step="any" placeholder="0"></label></div>
 <button>Save changes</button> <a class="btn alt" href="/items">Cancel</a></form>{% endblock %}"""
