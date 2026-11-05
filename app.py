@@ -491,6 +491,7 @@ PRINT = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport
 *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 body{font:11px/1.45 'Courier New',monospace;color:#000;background:#fff;width:{{ 72 if w80 else 48 }}mm;margin:0 auto;padding:3mm 0}
 .brand{text-align:center;color:#000;background:none;padding:5px 2px 4px;border-top:2px solid #000;border-bottom:2px solid #000;font:800 {{ 28 if w80 else 23 }}px/1.1 'Playfair Display',Georgia,'Times New Roman',serif;letter-spacing:.4px}
+.rc{text-align:center;font:700 9px Arial,Helvetica,sans-serif;letter-spacing:3px;margin-bottom:3px}
 .tag{text-align:center;font:italic 700 12px 'Playfair Display',Georgia,serif;letter-spacing:.3px;margin:5px 0 2px}
 .addr{text-align:center;font-size:10px;line-height:1.35}
 hr{border:0;border-top:1px dashed #000;margin:6px 0}hr.s{border-top:1px solid #000}hr.d{border-top:3px double #000}
@@ -503,6 +504,7 @@ hr{border:0;border-top:1px dashed #000;margin:6px 0}hr.s{border-top:1px solid #0
 @media print{.bar{display:none}}
 </style></head><body>
 <div class="bar"><button onclick="window.print()">Print</button><a href="/bill/new">New bill</a></div>
+<div class="rc">RECEIPT</div>
 <div class="brand">{{ shop }}</div>
 {% if tagline %}<div class="tag">{{ tagline }}</div>{% endif %}
 <div class="addr">{{ address }}{% if phone %}<br>TEL: {{ phone }}{% endif %}</div><hr class="d">
