@@ -300,10 +300,18 @@ def items_import():
             msg = "Choose a CSV file first"
         else:
             try:
-                text = up.read().decode("utf-8-sig")
+                raw = up.read()
+                for enc in ("utf-8-sig", "cp1252", "utf-16", "latin-1"):  # Excel often saves as cp1252
+                    try:
+                        text = raw.decode(enc)
+                        break
+                    except UnicodeError:
+                        continue
+                head = text.split("\n", 1)[0]
+                delim = ";" if head.count(";") > head.count(",") else ("\t" if head.count("\t") > head.count(",") else ",")
                 have = {(i.get("name") or "").strip().lower() for i in db.items.find({}, {"name": 1})}
                 new = []
-                for r in csv.DictReader(io.StringIO(text)):
+                for r in csv.DictReader(io.StringIO(text), delimiter=delim):
                     name = (r.get("name") or "").strip()
                     if not name or name.lower() in have:
                         continue
