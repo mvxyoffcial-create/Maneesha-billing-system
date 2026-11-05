@@ -490,8 +490,8 @@ PRINT = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport
 @page{size:{{ 80 if w80 else 58 }}mm auto;margin:0}
 *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 html{background:#fff}
-body{font:700 11px/1.45 'Courier New',monospace;color:#000;background:#fff;width:{{ 72 if w80 else 48 }}mm;margin:0 auto;padding:2mm 0 12mm;-webkit-font-smoothing:none}
-.brand{text-align:center;color:#000;background:none;padding:5px 2px 4px;border-top:2px solid #000;border-bottom:2px solid #000;font:900 {{ 28 if w80 else 22 }}px/1.1 'Playfair Display',Georgia,'Times New Roman',serif;letter-spacing:.3px}
+body{font:700 11px/1.45 'Courier New',monospace;color:#000;background:#fff;width:{{ 70 if w80 else 43 }}mm;margin:0;padding:2mm 0 12mm 1.5mm;overflow:hidden;-webkit-font-smoothing:none}
+.brand{text-align:center;color:#000;background:none;padding:5px 2px 4px;border-top:2px solid #000;border-bottom:2px solid #000;font:900 {{ 28 if w80 else 20 }}px/1.1 'Playfair Display',Georgia,'Times New Roman',serif;letter-spacing:.3px}
 .rc{text-align:center;font:700 9px Arial,Helvetica,sans-serif;letter-spacing:3px;margin-bottom:3px}
 .tag{text-align:center;font:italic 700 12px 'Playfair Display',Georgia,serif;letter-spacing:.3px;margin:5px 0 2px}
 .addr{text-align:center;font-size:10px;line-height:1.35}
@@ -513,7 +513,7 @@ hr{border:0;border-top:1px dashed #000;margin:6px 0}hr.s{border-top:1px solid #0
 <div class="l"><span>Date</span><span>{{ b.created.strftime('%Y-%m-%d') }}</span></div>
 <div class="l"><span>Time</span><span>{{ b.created.strftime('%H:%M') }}</span></div>
 {% if b.customer %}<div class="l"><span>Customer</span><span>{{ b.customer }}</span></div>{% endif %}<hr class="d">
-<div class="l hd"><span>ITEM</span><span>AMOUNT (Rs)</span></div>
+<div class="l hd"><span>ITEM</span><span>AMOUNT</span></div>
 {% for l in b.lines %}<div class="nm">{{ loop.index }}. {{ l.name }}</div>
 <div class="l it"><span>{{ l.qty|num }} x {{ l.price|money }}</span><span>{{ l.amount|money }}</span></div>{% endfor %}<hr>
 <div class="l sm"><span>Items: {{ b.lines|length }}</span><span>Total qty: {{ b.lines|sum(attribute='qty')|num }}</span></div>
