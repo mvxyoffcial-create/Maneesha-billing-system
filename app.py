@@ -340,7 +340,7 @@ Enter the customer name (optional) and the cash received, then tap <b>Save and p
 The stock goes down automatically. The bill shows the total, cash and change.<br>
 <b>Discount:</b> type a discount in Rs, or a percentage (%), under the item list. You can also type the final total you want to charge and the discount is worked out for you. The bill shows the subtotal, the discount and the new total.</p></div>
 <div class="card"><b>3. Print</b>
-<p>The print window opens by itself. Choose your thermal printer and set margins to "None". Bills are 58mm wide;
+<p>The print window opens by itself. Choose your thermal printer (YHD-5890, 58mm), set paper size to 58mm, margins to "None" and scale to 100%. Bills are 58mm wide;
 for an 80mm printer add <b>?w=80</b> at the end of the bill address. To print again later, open <b>Bills</b> and tap <b>Reprint</b>.</p></div>
 <div class="card"><b>4. Wrong bill?</b>
 <p>In <b>Bills</b> tap <b>Void</b>. The bill is deleted and its items go back into stock.</p></div>
@@ -489,8 +489,9 @@ PRINT = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport
 <title>Bill {{ b.id }}</title><style>
 @page{size:{{ 80 if w80 else 58 }}mm auto;margin:0}
 *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-body{font:11px/1.45 'Courier New',monospace;color:#000;background:#fff;width:{{ 72 if w80 else 48 }}mm;margin:0 auto;padding:3mm 0}
-.brand{text-align:center;color:#000;background:none;padding:5px 2px 4px;border-top:2px solid #000;border-bottom:2px solid #000;font:800 {{ 28 if w80 else 23 }}px/1.1 'Playfair Display',Georgia,'Times New Roman',serif;letter-spacing:.4px}
+html{background:#fff}
+body{font:700 11px/1.45 'Courier New',monospace;color:#000;background:#fff;width:{{ 72 if w80 else 48 }}mm;margin:0 auto;padding:2mm 0 12mm;-webkit-font-smoothing:none}
+.brand{text-align:center;color:#000;background:none;padding:5px 2px 4px;border-top:2px solid #000;border-bottom:2px solid #000;font:900 {{ 28 if w80 else 22 }}px/1.1 'Playfair Display',Georgia,'Times New Roman',serif;letter-spacing:.3px}
 .rc{text-align:center;font:700 9px Arial,Helvetica,sans-serif;letter-spacing:3px;margin-bottom:3px}
 .tag{text-align:center;font:italic 700 12px 'Playfair Display',Georgia,serif;letter-spacing:.3px;margin:5px 0 2px}
 .addr{text-align:center;font-size:10px;line-height:1.35}
